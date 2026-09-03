@@ -62,6 +62,25 @@ class ModularUNet(nn.Module):
         self.head = nn.Conv2d(32, num_classes, kernel_size=1)
         
 
+    def foward(self, x):
+        # Informação sendo passada pela rede
+
+        # Primeiro ela desce 😏
+        s0 = self.enc0(x)
+        s1 = self.enc1(s0)
+        s2 = self.enc1(s1)
+        s3 = self.enc1(s2)
+        bottleneck = self.enc4(s3)
+
+        # depois ela sobe 😏
+        d4 = self.dec4(bottleneck, s3)
+        d3 = self.dec3(d4, s2)
+        d2 = self.dec3(d3, s1)
+        d1 = self.dec3(d2, s0)
+
+        out_features = self.final_up(d1)
+
+        return self.head(out_features)
 
 
 

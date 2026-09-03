@@ -68,15 +68,15 @@ class ModularUNet(nn.Module):
         # Primeiro ela desce 😏
         s0 = self.enc0(x)
         s1 = self.enc1(s0)
-        s2 = self.enc1(s1)
-        s3 = self.enc1(s2)
+        s2 = self.enc2(s1)
+        s3 = self.enc3(s2)
         bottleneck = self.enc4(s3)
 
         # depois ela sobe 😏
         d4 = self.dec4(bottleneck, s3)
         d3 = self.dec3(d4, s2)
-        d2 = self.dec3(d3, s1)
-        d1 = self.dec3(d2, s0)
+        d2 = self.dec2(d3, s1)
+        d1 = self.dec1(d2, s0)
 
         out_features = self.final_up(d1)
 

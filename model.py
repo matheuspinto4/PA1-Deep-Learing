@@ -7,7 +7,7 @@ import torchvision.models as models
 
 # Criando a classe do Decoder
 class DecoderBlock(nn.Module):
-    def __int__(self, in_channels, skip_channels, out_channels):
+    def __init__(self, in_channels, skip_channels, out_channels):
         super().__init__()
 
         self.up = nn.ConvTranspose2d(in_channels, in_channels // 2, kernel_size=2, stride=2)
@@ -15,18 +15,18 @@ class DecoderBlock(nn.Module):
         self.conv = nn.Sequential(
             nn.Conv2d(in_channels // 2 + skip_channels, out_channels, kernel_size=3, padding=1),
             nn.BatchNorm2d(out_channels),
-            nn.ReLU(inplace=True), # inplace=True otimiza memória (genial)
+            nn.ReLU(inplace=True), # inplace=True otimiza memória 
             nn.Conv2d(out_channels, out_channels, kernel_size=3, padding=1),
             nn.ReLU(inplace=True)
         )
 
-        def foward(self, x, skip=None):
-            x = self.up(x)
+    def forward(self, x, skip=None):
+        x = self.up(x)
 
-            if skip is not None:
-                x = torch.cat([x, skip], dim=1)
+        if skip is not None:
+            x = torch.cat([x, skip], dim=1)
 
-            return self.conv(x)
+        return self.conv(x)
 
 # Criando a classe para a Rede U-NET, iremos utilizar como base.
 class ModularUNet(nn.Module):
@@ -62,7 +62,7 @@ class ModularUNet(nn.Module):
         self.head = nn.Conv2d(32, num_classes, kernel_size=1)
         
 
-    def foward(self, x):
+    def forward(self, x):
         # Informação sendo passada pela rede
 
         # Primeiro ela desce 😏

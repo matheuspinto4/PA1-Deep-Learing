@@ -2,3 +2,5 @@ data/
 DL_20242_07_SemanticSegmentation-1.pdf
 .vscode/
 __pycache__/
+
+*.pth

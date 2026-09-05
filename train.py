@@ -8,46 +8,14 @@ import matplotlib.pyplot as plt
 # Importar o modelo e o dataset real DSB2018
 from model import ModularUNet
 from dataset import DSB2018Dataset
+from losses import DiceLoss
+from metrics import calculate_metrics
 
 # Otimização de threads de CPU
 torch.set_num_threads(os.cpu_count() or 4)
 
 # ==========================================
-# 1. Função de Perda (Dice Loss) e Métricas
-# ==========================================
-class DiceLoss(nn.Module):
-    def __init__(self, smooth=1e-6):
-        super().__init__()
-        self.smooth = smooth
-
-    def forward(self, logits, targets):
-        probs = torch.sigmoid(logits)
-        probs_flat = probs.view(-1)
-        targets_flat = targets.view(-1)
-
-        intersection = (probs_flat * targets_flat).sum()
-        dice_score = (2.0 * intersection + self.smooth) / (probs_flat.sum() + targets_flat.sum() + self.smooth)
-        
-        return 1.0 - dice_score
-
-def calculate_metrics(logits, targets, threshold=0.5, smooth=1e-6):
-    probs = torch.sigmoid(logits)
-    preds = (probs > threshold).float()
-
-    preds_flat = preds.view(-1)
-    targets_flat = targets.view(-1)
-
-    intersection = (preds_flat * targets_flat).sum()
-    total_union = preds_flat.sum() + targets_flat.sum() - intersection
-
-    iou = (intersection + smooth) / (total_union + smooth)
-    dice = (2.0 * intersection + smooth) / (preds_flat.sum() + targets_flat.sum() + smooth)
-
-    return iou.item(), dice.item()
-
-
-# ==========================================
-# 2. Pipeline de Treinamento Ultrarrápido
+# 1. Pipeline de Treinamento Ultrarrápido
 # ==========================================
 def train_baseline(data_dir=os.path.join("data", "stage1_train"), num_epochs=5, batch_size=16, image_size=(128, 128)):
     print("=== Iniciando o Treinamento Otimizado da Parte 1 ===")
@@ -83,7 +51,7 @@ def train_baseline(data_dir=os.path.join("data", "stage1_train"), num_epochs=5, 
     # C) Loop de Treinamento
     for epoch in range(1, num_epochs + 1):
         epoch_start = time.time()
-        
+
         # --- TREINO ---
         model.train()
         running_loss = 0.0

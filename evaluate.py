@@ -2,89 +2,14 @@ import os
 import numpy as np
 import torch
 from torch.utils.data import DataLoader, random_split
-from scipy.ndimage import label
 import matplotlib.pyplot as plt
 
 from model import ModularUNet
 from dataset import DSB2018Dataset
-
-# ==========================================
-# 1. Algoritmo de Matching Guloso (mAP @ 0.50:0.95)
-# ==========================================
-def compute_iou_matrix(pred_map, gt_map, num_preds, num_gts):
-    if num_preds == 0 or num_gts == 0:
-        return np.zeros((num_preds, num_gts), dtype=np.float32)
-
-    iou_matrix = np.zeros((num_preds, num_gts), dtype=np.float32)
-
-    for i in range(1, num_preds + 1):
-        pred_mask = (pred_map == i)
-        pred_area = pred_mask.sum()
-        if pred_area == 0:
-            continue
-
-        overlapping_gt_ids = np.unique(gt_map[pred_mask])
-        for j in overlapping_gt_ids:
-            if j == 0:
-                continue
-            gt_mask = (gt_map == j)
-            gt_area = gt_mask.sum()
-            
-            intersection = (pred_mask & gt_mask).sum()
-            union = pred_area + gt_area - intersection
-            
-            if union > 0:
-                iou_matrix[i - 1, j - 1] = intersection / union
-
-    return iou_matrix
-
-def evaluate_image_ap(pred_map, gt_map, iou_thresholds=np.arange(0.50, 1.00, 0.05)):
-    num_preds = int(pred_map.max())
-    num_gts = int(gt_map.max())
-
-    counting_error = abs(num_preds - num_gts)
-
-    if num_gts == 0 and num_preds == 0:
-        return 1.0, counting_error
-    if num_gts == 0 or num_preds == 0:
-        return 0.0, counting_error
-
-    iou_matrix = compute_iou_matrix(pred_map, gt_map, num_preds, num_gts)
-
-    ap_per_threshold = []
-
-    for t in iou_thresholds:
-        pairs = []
-        for i in range(num_preds):
-            for j in range(num_gts):
-                if iou_matrix[i, j] >= t:
-                    pairs.append((iou_matrix[i, j], i, j))
-
-        pairs.sort(key=lambda x: x[0], reverse=True)
-
-        matched_preds = set()
-        matched_gts = set()
-
-        for iou, i, j in pairs:
-            if i not in matched_preds and j not in matched_gts:
-                matched_preds.add(i)
-                matched_gts.add(j)
-
-        tp = len(matched_preds)
-        fp = num_preds - tp
-        fn = num_gts - tp
-
-        denominator = tp + fp + fn
-        ap_t = tp / denominator if denominator > 0 else 0.0
-        ap_per_threshold.append(ap_t)
-
-    mAP = float(np.mean(ap_per_threshold))
-    return mAP, counting_error
+from metrics import evaluate_image_ap
+from postprocessing import connected_components_to_instances
 
 
-# ==========================================
-# 2. Avaliacao Completa do Modelo Baseline
-# ==========================================
 def evaluate_baseline_model(checkpoint_path="best_baseline_model.pth", data_dir=os.path.join("data", "stage1_train")):
     print("=== Avaliando o Modelo Baseline no Nivel de Instancia (Parte 1) ===")
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
@@ -117,7 +42,7 @@ def evaluate_baseline_model(checkpoint_path="best_baseline_model.pth", data_dir=
             prob = torch.sigmoid(output).squeeze().cpu().numpy()
 
             binary_pred = (prob > 0.5).astype(np.uint8)
-            pred_instance_mask, num_features = label(binary_pred)
+            pred_instance_mask = connected_components_to_instances(binary_pred)
 
             gt_mask_np = gt_instance_mask.squeeze().numpy()
             num_gts = int(gt_mask_np.max())
@@ -143,11 +68,12 @@ def evaluate_baseline_model(checkpoint_path="best_baseline_model.pth", data_dir=
 
     plot_failure_analysis(gt_object_counts, image_mAPs, counting_errors)
 
+
 def plot_failure_analysis(gt_counts, mAPs, counting_errors, save_path="baseline_failure_analysis.png"):
     fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(14, 6))
 
     ax1.scatter(gt_counts, mAPs, alpha=0.6, color="crimson", edgecolors="k")
-    
+
     if len(gt_counts) > 1:
         z = np.polyfit(gt_counts, mAPs, 1)
         p = np.poly1d(z)
@@ -155,20 +81,20 @@ def plot_failure_analysis(gt_counts, mAPs, counting_errors, save_path="baseline_
         ax1.plot(x_trend, p(x_trend), "r--", linewidth=2, label="Tendencia")
 
     ax1.set_title("Fracasso da Abordagem Ingenua: mAP vs Densidade de Objetos", fontsize=12)
-    ax1.set_xlabel("Densidade de Objetos (Número de Núcleos na Imagem)")
+    ax1.set_xlabel("Densidade de Objetos (Numero de Nucleos na Imagem)")
     ax1.set_ylabel("mAP @ [0.50:0.95]")
     ax1.legend()
     ax1.grid(True)
 
     ax2.scatter(gt_counts, counting_errors, alpha=0.6, color="navy", edgecolors="k")
-    
+
     if len(gt_counts) > 1:
         z2 = np.polyfit(gt_counts, counting_errors, 1)
         p2 = np.poly1d(z2)
         ax2.plot(x_trend, p2(x_trend), "b--", linewidth=2, label="Tendencia de Erro")
 
     ax2.set_title("Erro Absoluto de Contagem vs Densidade de Objetos", fontsize=12)
-    ax2.set_xlabel("Densidade de Objetos (Número de Núcleos na Imagem)")
+    ax2.set_xlabel("Densidade de Objetos (Numero de Nucleos na Imagem)")
     ax2.set_ylabel("Erro Absoluto de Contagem (|Pred - GT|)")
     ax2.legend()
     ax2.grid(True)
@@ -176,6 +102,7 @@ def plot_failure_analysis(gt_counts, mAPs, counting_errors, save_path="baseline_
     plt.tight_layout()
     plt.savefig(save_path)
     print(f"\nGrafico de analise de fracasso salvo em: '{save_path}'")
+
 
 if __name__ == "__main__":
     evaluate_baseline_model()

@@ -8,53 +8,11 @@ import matplotlib.pyplot as plt
 # Importar o modelo e o dataset sintético
 from model import ModularUNet
 from synthetic_dataset import SyntheticEllipseDataset
+from losses import DiceLoss
+from metrics import calculate_metrics
 
 # ==========================================
-# 1. Funções de Métrica e Perda (Loss & Metrics)
-# ==========================================
-class DiceLoss(nn.Module):
-    """
-    Dice Loss para Segmentação Semântica.
-    Mede a sobreposição entre a previsão da rede e a máscara verdadeira.
-    """
-    def __init__(self, smooth=1e-6):
-        super().__init__()
-        self.smooth = smooth
-
-    def forward(self, logits, targets):
-        # Aplica sigmoide para converter logits em probabilidades [0, 1]
-        probs = torch.sigmoid(logits)
-        
-        # Aplanar os tensores (flatten) para vetor 1D
-        probs_flat = probs.view(-1)
-        targets_flat = targets.view(-1)
-
-        intersection = (probs_flat * targets_flat).sum()
-        dice_score = (2.0 * intersection + self.smooth) / (probs_flat.sum() + targets_flat.sum() + self.smooth)
-        
-        return 1.0 - dice_score
-
-def calculate_metrics(logits, targets, threshold=0.5, smooth=1e-6):
-    """
-    Calcula o IoU (Intersection over Union) e o Dice Coefficient.
-    """
-    probs = torch.sigmoid(logits)
-    preds = (probs > threshold).float()
-
-    preds_flat = preds.view(-1)
-    targets_flat = targets.view(-1)
-
-    intersection = (preds_flat * targets_flat).sum()
-    total_union = preds_flat.sum() + targets_flat.sum() - intersection
-
-    iou = (intersection + smooth) / (total_union + smooth)
-    dice = (2.0 * intersection + smooth) / (preds_flat.sum() + targets_flat.sum() + smooth)
-
-    return iou.item(), dice.item()
-
-
-# ==========================================
-# 2. Pipeline Principal de Treinamento
+# 1. Pipeline Principal de Treinamento
 # ==========================================
 def train_synthetic():
     print("=== Iniciando o Teste Unitário Sintético (Parte 0) ===")
@@ -96,7 +54,7 @@ def train_synthetic():
             outputs = model(images)
             loss_bce = bce_criterion(outputs, masks)
             loss_dice = dice_criterion(outputs, masks)
-            
+
             # Perda combinada BCE + Dice
             total_loss = loss_bce + loss_dice
 
@@ -146,7 +104,7 @@ def train_synthetic():
     plot_results(model, val_loader, device)
 
 # ==========================================
-# 3. Função para Gerar o Gráfico de Resultados
+# 2. Função para Gerar o Gráfico de Resultados
 # ==========================================
 def plot_results(model, val_loader, device, save_path="synthetic_results.png"):
     model.eval()

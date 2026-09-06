@@ -132,3 +132,67 @@ O ganho é maior justamente nas imagens mais densas: na amostra com 123 núcleos
 mAP subiu de 0.0799 para 0.4828 e o erro de contagem caiu de 62 para 20 — ainda não é
 perfeito (ver `resultados/imagens/instance_head_failure_analysis.png`), mas mostra que
 separar núcleos encostados é exatamente onde o método ingênuo mais falha.
+
+## Parte 3 — Ablações (Eixo 1: resolução, Eixo 2: função de perda)
+
+Duas ablações rodadas com o mesmo modelo da Parte 2 (Trilha A), cada configuração com
+2 seeds.
+
+**Eixo 1 — mecanismo de recuperação de resolução.** Comparação entre o decoder atual
+(`skip`, U-Net com skip connections) e uma segunda variante (`atrous_aspp`) que substitui
+skip connections por convolução atrous mantendo o *output stride* em 8 (mesmo encoder
+ResNet34, com `layer3`/`layer4` convertidos de stride para dilatação — o
+`replace_stride_with_dilation` do torchvision não funciona no ResNet34 porque o
+`BasicBlock` recusa `dilation > 1` no construtor, então os atributos de stride/dilatação
+das convoluções já construídas são editados diretamente) seguida de uma ASPP
+(convoluções atrous em paralelo com taxas 6/12/18 + ramo de image pooling, slide 57).
+
+**Eixo 2 — função de perda.** Uma única classe (`FocalLoss(gamma, weight)`) generaliza os
+4 tipos pedidos: `gamma=0` reduz-se exatamente à Cross-Entropy (com ou sem peso por
+classe), `gamma>0` vira Focal (balanceada ou não). Variado `gamma ∈ {0,1,2,5}` × peso por
+classe ∈ {sim, não}, decoder fixo em `skip`.
+
+Devido ao prazo, as ablações usaram 3 épocas (em vez das 5 usadas na Parte 2) — o
+objetivo é o efeito relativo entre configurações, não o melhor checkpoint absoluto.
+
+```bash
+python losses.py                # teste de sanidade: FocalLoss(gamma=0) == CrossEntropyLoss
+python model.py                  # teste de sanidade: as duas variantes de decoder produzem a mesma forma de saida
+python run_ablations.py          # roda as 18 configuracoes unicas (~1h), salva resultados/ablacoes_resultados.csv
+python summarize_ablations.py    # agrega os resultados e gera resultados/imagens/eixo2_loss_ablation.png
+```
+
+### Resultados — Eixo 1 (gamma=0, balanceada, 2 seeds)
+
+| Decoder | mAP | IoU fronteira | Erro de contagem |
+|---|---|---|---|
+| `skip` | 0.2475 ± 0.0512 | 0.4281 ± 0.0438 | 12.54 ± 0.01 |
+| `atrous_aspp` | 0.0679 ± 0.0037 | 0.2467 ± 0.0172 | 36.69 ± 0.10 |
+
+O `atrous_aspp` perdeu em todas as métricas, com desvio pequeno entre seeds (o efeito é
+consistente, não ruído). Explicação mais provável: essa variante faz upsample bilinear
+"burro" de 8x no final, sem nenhum mecanismo aprendido para recuperar detalhe fino — ao
+contrário do `skip`, que reconstrói a resolução em 4 estágios aprendidos com acesso direto
+às features de alta resolução do encoder via skip connections. É consistente com o motivo
+pelo qual o DeepLabv3+ (slide 61) reintroduz skip connections em cima do ASPP puro do
+DeepLabv3. **Ressalva**: com só 3 épocas, não é possível descartar que o `atrous_aspp`
+apenas precise de mais tempo para convergir — o experimento não isola as duas hipóteses.
+
+### Resultados — Eixo 2 (decoder `skip`, 2 seeds)
+
+| gamma | Sem peso — mAP / IoU fronteira | Com peso (balanceada) — mAP / IoU fronteira |
+|---|---|---|
+| 0 | 0.3653 ± 0.0168 / 0.4253 ± 0.0316 | 0.2475 ± 0.0512 / 0.4281 ± 0.0438 |
+| 1 | 0.3613 ± 0.0534 / 0.4142 ± 0.0516 | 0.2798 ± 0.0122 / 0.4655 ± 0.0004 |
+| 2 | 0.3948 ± 0.0156 / 0.4245 ± 0.0058 | 0.2752 ± 0.0577 / 0.4421 ± 0.0473 |
+| 5 | 0.2789 ± 0.0105 / 0.3421 ± 0.0072 | 0.3566 ± 0.0190 / 0.4923 ± 0.0206 |
+
+Ver `resultados/imagens/eixo2_loss_ablation.png`. Sem peso por classe, aumentar `gamma`
+**piora** a classe fronteira (o termo de foco `(1-p)^γ` da Focal Loss prioriza exemplos
+difíceis — mas difícil não é sinônimo de raro, então sem compensar pelo peso, γ alto só
+desestabiliza o treino: `gamma=5` sem peso é a pior configuração de toda a tabela). Com
+peso por classe, aumentar `gamma` **melhora** a fronteira continuamente, culminando na
+melhor configuração da tabela (`gamma=5` balanceada: IoU fronteira 0.4923). O mAP de
+instância nem sempre acompanha o IoU de fronteira isoladamente — balancear a classe rara
+pode custar calibração nas outras classes, o que afeta a decodificação por watershed como
+um todo.

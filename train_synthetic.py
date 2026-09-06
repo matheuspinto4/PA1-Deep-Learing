@@ -7,7 +7,7 @@ import matplotlib.pyplot as plt
 
 # Importar o modelo e o dataset sintético
 from model import ModularUNet
-from synthetic_dataset import SyntheticEllipseDataset
+from dataset import SyntheticEllipseDataset
 from losses import DiceLoss
 from metrics import calculate_metrics
 
@@ -106,7 +106,7 @@ def train_synthetic():
 # ==========================================
 # 2. Função para Gerar o Gráfico de Resultados
 # ==========================================
-def plot_results(model, val_loader, device, save_path="synthetic_results.png"):
+def plot_results(model, val_loader, device, save_path=r"resultados/imagens/synthetic_results.png"):
     model.eval()
     images, masks, _ = next(iter(val_loader))
     images_dev = images.to(device)

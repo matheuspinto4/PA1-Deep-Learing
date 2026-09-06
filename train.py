@@ -17,7 +17,7 @@ torch.set_num_threads(os.cpu_count() or 4)
 # ==========================================
 # 1. Pipeline de Treinamento Ultrarrápido
 # ==========================================
-def train_baseline(data_dir=os.path.join("data", "stage1_train"), num_epochs=5, batch_size=16, image_size=(128, 128)):
+def train_baseline(data_dir=os.path.join("data", "stage1_train"), num_epochs=1, batch_size=16, image_size=(128, 128)):
     print("=== Iniciando o Treinamento Otimizado da Parte 1 ===")
     start_time = time.time()
 
@@ -45,7 +45,7 @@ def train_baseline(data_dir=os.path.join("data", "stage1_train"), num_epochs=5, 
     optimizer = torch.optim.AdamW(model.parameters(), lr=1e-3, weight_decay=1e-4)
 
     best_val_iou = 0.0
-    checkpoint_path = "best_baseline_model.pth"
+    checkpoint_path = r"resultados/modelos/best_baseline_model.pth"
     history = {"train_loss": [], "val_loss": [], "val_iou": [], "val_dice": []}
 
     # C) Loop de Treinamento
@@ -122,7 +122,7 @@ def train_baseline(data_dir=os.path.join("data", "stage1_train"), num_epochs=5, 
 
     plot_training_curves(history)
 
-def plot_training_curves(history, save_path="baseline_training_curves.png"):
+def plot_training_curves(history, save_path=r"resultados/imagens/baseline_training_curves.png"):
     epochs = range(1, len(history["train_loss"]) + 1)
     fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(12, 5))
 

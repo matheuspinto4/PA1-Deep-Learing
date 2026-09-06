@@ -10,7 +10,7 @@ from metrics import evaluate_image_ap
 from postprocessing import connected_components_to_instances
 
 
-def evaluate_baseline_model(checkpoint_path="best_baseline_model.pth", data_dir=os.path.join("data", "stage1_train")):
+def evaluate_baseline_model(checkpoint_path=r"resultados/modelos/best_baseline_model.pth", data_dir=os.path.join("data", "stage1_train")):
     print("=== Avaliando o Modelo Baseline no Nivel de Instancia (Parte 1) ===")
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
@@ -69,7 +69,7 @@ def evaluate_baseline_model(checkpoint_path="best_baseline_model.pth", data_dir=
     plot_failure_analysis(gt_object_counts, image_mAPs, counting_errors)
 
 
-def plot_failure_analysis(gt_counts, mAPs, counting_errors, save_path="baseline_failure_analysis.png"):
+def plot_failure_analysis(gt_counts, mAPs, counting_errors, save_path=r"resultados/imagens/baseline_failure_analysis.png"):
     fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(14, 6))
 
     ax1.scatter(gt_counts, mAPs, alpha=0.6, color="crimson", edgecolors="k")

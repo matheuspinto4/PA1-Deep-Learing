@@ -196,3 +196,51 @@ melhor configuração da tabela (`gamma=5` balanceada: IoU fronteira 0.4923). O 
 instância nem sempre acompanha o IoU de fronteira isoladamente — balancear a classe rara
 pode custar calibração nas outras classes, o que afeta a decodificação por watershed como
 um todo.
+
+## Parte 4 — Inferência em mosaico
+
+Constrói uma imagem grande (mosaico 2×2 de imagens de validação, `mosaic.py`), roda o
+modelo da Parte 2 em tiles sobrepostos (`tiling.py`), e mostra o que acontece com núcleos
+que caem exatamente na costura entre dois tiles — e como corrigir isso.
+
+**O problema**: cada tile é decodificado por watershed de forma **independente** — os ids
+de instância de um tile não têm relação nenhuma com os de outro. Um núcleo que cai bem na
+costura entre dois tiles vira dois ids diferentes na costura ingênua (cada tile só
+contribui com sua região central pro canvas final, seguindo a prática do slide 83).
+
+**A correção**: pra cada par de tiles vizinhos (horizontal ou verticalmente), a faixa de
+sobreposição entre eles é a única região onde os dois tiles viram exatamente o mesmo
+pedaço de imagem, cada um com sua própria opinião sobre quem é quem ali. Perto da linha de
+corte real (não na faixa de sobreposição inteira — ver ressalva abaixo), compara-se o IoU
+de cada par (instância do tile esquerdo/de cima, instância do tile direito/de baixo); pares
+com IoU alto o suficiente são fundidos via Union-Find. A fusão vertical reaproveita a
+mesma função da horizontal, transpondo as máscaras — evitando duas implementações
+independentes do mesmo cálculo de IoU.
+
+```bash
+python mosaic.py                # (opcional) nao tem __main__ de teste isolado; usado por run_tilling_experiment.py
+python run_tilling_experiment.py # monta o mosaico, roda tiles, compara costura ingenua vs. com fusao
+```
+
+### Resultados
+
+| Método | mAP | Erro de contagem |
+|---|---|---|
+| Costura ingênua (sem fusão) | 0.3348 | 13 |
+| Com fusão de tiles | 0.3900 | 6 |
+
+Ver `resultados/imagens/tiling_seam_comparison.png`: na costura vertical em col=88, um
+núcleo que é um objeto só no ground truth aparece partido em duas cores na costura ingênua,
+e volta a ser um objeto só depois da fusão — a evidência visual do problema e da correção.
+
+**Ressalva importante sobre a metodologia** (descoberta durante a implementação, ver
+`AI_LOG.md`): a janela usada para decidir quais pares de instâncias são candidatos a fusão
+precisa ser **estreita** (poucos pixels ao redor da linha de corte exata), não a faixa de
+sobreposição inteira — do contrário, núcleos inteiros que só por acaso estão na região de
+sobreposição (sem nunca terem sido cortados) são fundidos incorretamente. Além disso, o
+tamanho do tile e o stride escolhidos não podem coincidir com as bordas das imagens de
+origem coladas no mosaico (isso faz o modelo ver uma descontinuidade falsa *dentro* de um
+único tile, já que a Parte 4 monta o "mosaico grande" colando imagens do dataset que na
+realidade não têm relação espacial nenhuma entre si) nem usar sobreposição excessiva
+(mais de ~50% infla artificialmente a contagem de fusões, mesmo sem prejudicar o resultado
+final).

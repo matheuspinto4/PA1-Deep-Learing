@@ -19,3 +19,19 @@ class DiceLoss(nn.Module):
         dice_score = (2.0 * intersection + self.smooth) / (probs_flat.sum() + targets_flat.sum() + self.smooth)
         
         return 1.0 - dice_score
+
+
+def compute_class_weights(class_pixel_counts, num_classes):
+    """
+    Calcula pesos por classe a partir da contagem total de pixels de cada
+    classe no conjunto de treino, para compensar o desbalanceamento (a
+    classe fronteira e sempre a minoritaria, por ser so um anel fino ao
+    redor de cada nucleo).
+
+    Formula de frequencia inversa normalizada:
+        peso_c = total_pixels / (num_classes * contagem_c)
+    Quanto mais rara a classe, maior o peso.
+    """
+    total_pixels = sum(class_pixel_counts)
+    weights = [total_pixels / (num_classes * count) for count in class_pixel_counts]
+    return torch.tensor(weights, dtype=torch.float32)

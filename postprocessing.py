@@ -1,4 +1,6 @@
+import numpy as np
 from scipy.ndimage import label
+from skimage.segmentation import watershed
 
 
 def connected_components_to_instances(binary_pred):

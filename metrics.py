@@ -103,3 +103,29 @@ def evaluate_image_ap(pred_map, gt_map, iou_thresholds=np.arange(0.50, 1.00, 0.0
 
     mAP = float(np.mean(ap_per_threshold))
     return mAP, counting_error
+
+
+# ==========================================
+# IoU por classe (multiclasse) - usado na Parte 2 (Trilha A: fundo/interior/fronteira)
+# ==========================================
+def calculate_multiclass_iou(logits, targets, num_classes, smooth=1e-6):
+    """
+    Calcula o IoU de cada classe separadamente. Devolve uma lista com um
+    IoU por indice de classe (0..num_classes-1). Isso importa mais que uma
+    acuracia global, porque a classe fronteira e minoritaria: um modelo
+    que erra toda a fronteira ainda pode ter acuracia global alta.
+    """
+    preds = torch.argmax(logits, dim=1)
+
+    per_class_iou = []
+    for c in range(num_classes):
+        pred_c = (preds == c)
+        target_c = (targets == c)
+
+        intersection = (pred_c & target_c).float().sum()
+        union = (pred_c | target_c).float().sum()
+
+        iou_c = (intersection + smooth) / (union + smooth)
+        per_class_iou.append(iou_c.item())
+
+    return per_class_iou

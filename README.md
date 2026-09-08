@@ -244,3 +244,89 @@ origem coladas no mosaico (isso faz o modelo ver uma descontinuidade falsa *dent
 realidade não têm relação espacial nenhuma entre si) nem usar sobreposição excessiva
 (mais de ~50% infla artificialmente a contagem de fusões, mesmo sem prejudicar o resultado
 final).
+
+## Parte 5 — Galeria de falhas
+
+### Campo receptivo teórico (obrigatório)
+
+`receptive_field.py` calcula o campo receptivo teórico do encoder ResNet34 (fórmula
+padrão dos slides 35-38: cada camada expande o campo receptivo pelo kernel efetivo —
+considerando dilatação — escalado pelo salto acumulado dos strides anteriores):
+
+```bash
+python receptive_field.py
+```
+
+| Configuração | Campo receptivo | Output stride |
+|---|---|---|
+| Encoder completo, sem atrous (`skip`) | 899px | 32 |
+| Encoder completo, com atrous (`atrous_aspp`) | 947px | 8 |
+| Encoder raso, sem atrous, mesmo output stride 8 (parado após `layer2`) | 179px | 8 |
+
+Na mesma resolução de saída (output stride 8), o atrous aumenta o campo receptivo de
+179px para 947px sem perder resolução espacial — exatamente o ganho que o slide 40
+descreve. **Ressalva**: campo receptivo *teórico* cresce rápido e costuma superar o
+tamanho da imagem em redes fundas (fato conhecido — o campo receptivo *efetivo*, que
+realmente influencia a predição, é bem menor); reportamos o teórico porque é o que o
+enunciado pede.
+
+Comparando com a distribuição real de tamanho dos núcleos (maior lado do bounding box,
+29.212 núcleos analisados): mediana de **7px**, percentil 90 de **15px**, máximo
+observado de **59px**. Ou seja, **nenhum núcleo chega perto de exceder o campo
+receptivo** — nem o raso. O diagnóstico-exemplo do enunciado ("objeto maior que o campo
+receptivo") não se aplica a este dataset: o gargalo não é campo de visão, é resolução
+espacial (mediana de 7px é menor que o *output stride* de 32px do `skip`, e quase do
+tamanho do stride de 8px do `atrous_aspp`).
+
+### As 5 piores imagens
+
+`failure_gallery.py` roda o modelo final (Trilha A, checkpoint da Parte 2) em todas as
+134 imagens de validação, calcula o mAP por imagem, e gera a figura de 4 painéis (entrada
+/ ground truth / predição / mapa de probabilidade de fronteira) para as 5 piores:
+
+```bash
+python failure_gallery.py
+```
+
+| # | Núcleos reais | Previstos | Tamanho (min-max) | Diagnóstico |
+|---|---|---|---|---|
+| 1 (idx 19) | 68 | 7 | 1-5px | Imagem nativa **1272×603px**, redimensionada para 128×128 (~10x de encolhimento). Núcleos minúsculos e densamente empacotados; o mapa de fronteira reconhece a região do aglomerado (ver figura) mas não tem resolução para desenhar dezenas de fronteiras individuais entre vizinhos a poucos pixels de distância. |
+| 2 (idx 42) | 2 | 5 | 9-10px | Imagem de entrada com contraste quase nulo (praticamente uniforme). O canal de fronteira "alucina" padrões em anel a partir de ruído de fundo, criando instâncias fantasmas em regiões sem núcleo nenhum. |
+| 3 (idx 47) | 1 | 3 | 12px | Núcleo único, muito fraco, em imagem extremamente escura/ruidosa. A rede localiza aproximadamente o núcleo real mas também alucina 2 fragmentos extras a partir de ruído. |
+| 4 (idx 49) | 289 | 4 | 1-5px | Mesma resolução nativa do caso 1 (1272×603px) — o caso de densidade mais extremo do dataset inteiro. A rede acerta a forma geral (um anel), mas colapsa as 289 instâncias reais em ~4 blobs: o mesmo problema de resolução do caso 1, amplificado pela densidade. |
+| 5 (idx 123) | 2 | 2 | 6-7px | Dois núcleos minúsculos e adjacentes; a contagem bate por coincidência (os dois se fundem numa marca de watershed só, enquanto um artefato de ruído próximo é contado como núcleo à parte) — a contagem total dá certo, mas a correspondência espacial real falha nos dois, daí mAP=0. |
+
+Ver as figuras em `resultados/imagens/failure_case_0{1..5}_idx*.png`.
+
+### Correção implementada: aumentar a resolução de entrada
+
+Os casos 1 e 4 (as duas imagens de resolução nativa 1272×603, ~10x de encolhimento) e o
+caso 5 (resolução nativa 256×256, ~2x de encolhimento) apontam para o mesmo mecanismo:
+resolução espacial perdida no pré-processamento (redimensionar tudo para 128×128 antes de
+qualquer processamento pela rede), não limitação de campo receptivo. A correção testada:
+retreinar a Trilha A com `image_size=(256, 256)` em vez de `(128, 128)`, mantendo todo o
+resto igual (decoder `skip`, CE balanceada, erosão adaptativa).
+
+```bash
+python -c "from train_instance_head import train_instance_head; train_instance_head(image_size=(256,256), checkpoint_path=r'resultados/modelos/best_instance_head_model_256.pth')"
+python resolution_fix_comparison.py
+```
+
+| Caso (val_idx) | Núcleos | mAP 128px | mAP 256px | Erro 128px | Erro 256px |
+|---|---|---|---|---|---|
+| 19 | 68 | 0.0000 | 0.0000 | 61 | 58 |
+| 42 | 2 | 0.0000 | 0.0000 | 3 | 4 |
+| 47 | 1 | 0.0000 | 0.0000 | 2 | 2 |
+| 49 | 289 | 0.0000 | 0.0003 | 285 | 229 |
+| 123 | 2 | 0.0000 | **0.3667** | 0 | 0 |
+
+**Resultado honesto, não um "funcionou tudo"**: no caso 5 (downscale nativo de só 2x), a
+correção resolveu quase completamente — confirmação direta do diagnóstico. Nos casos 1 e 4
+(downscale nativo de ~10x), dobrar a resolução alvo ajuda (erro de contagem cai) mas não o
+suficiente para gerar mAP relevante — em 256px ainda estamos ~5x menores que o nativo, ou
+seja, a correção acertou a *direção* do diagnóstico mas não a *magnitude* necessária para
+esses casos extremos (provavelmente precisariam de resolução ainda mais próxima da nativa,
+ou de um processamento em tiles menores só para os aglomerados mais densos — conectando de
+volta com a Parte 4). Nos casos 2 e 3 (baixo contraste/ruído), a correção não mudou nada,
+como esperado — confirmando que esses dois casos têm uma causa raiz diferente (ruído, não
+resolução), e que aumentar resolução não é uma correção universal para todo tipo de falha.

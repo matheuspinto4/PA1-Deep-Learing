@@ -99,3 +99,28 @@ O resultado final: mAP subindo de 0,3348 (costura ingênua) para 0,3900 (com fus
 de contagem caindo de 13 para 6, e uma inspeção visual (`tiling_seam_comparison.png`)
 confirmando um núcleo específico que aparece partido em dois ids na costura ingênua e volta
 a ser um objeto só depois da correção.
+
+## O gargalo real não é campo receptivo, é resolução de pré-processamento (Parte 5)
+
+O enunciado dá um exemplo de diagnóstico ("o objeto tem 180px e o campo receptivo é
+140px"). Calculamos o campo receptivo teórico do nosso encoder antes de assumir que esse
+exemplo se aplicaria: mesmo a versão mais rasa do ResNet34 (parada na `layer2`, mesmo
+output stride do `atrous_aspp`) já tem campo receptivo teórico de 179px — maior que a
+imagem inteira (128×128). Comparando com a distribuição real de tamanho dos núcleos
+(mediana de 7px, máximo de 59px), ficou claro que nenhum núcleo chega perto de exceder o
+campo receptivo — o exemplo do enunciado não se aplica a este dataset.
+
+Isso mudou a direção da investigação: em vez de procurar objetos "grandes demais", rodamos
+o modelo final nas 134 imagens de validação e olhamos as 5 piores por mAP. Os dois casos
+mais catastróficos (68 e 289 núcleos reais, quase todos previstos como um blob só)
+tinham uma coisa em comum ao checar a resolução *original* das imagens antes do nosso
+resize fixo para 128×128: ambas eram nativamente **1272×603px** — um encolhimento de quase
+10x. Isso sugeriu que o gargalo não era a arquitetura, era o pré-processamento jogando fora
+resolução antes da rede processar qualquer coisa. Testamos retreinando com
+`image_size=(256,256)` e comparando as mesmas 5 imagens antes/depois: o caso com menor
+encolhimento nativo (2x) teve uma melhora dramática (mAP 0 → 0,367); os dois casos de
+encolhimento nativo de 10x melhoraram no erro de contagem mas não o suficiente pra gerar
+mAP relevante (256px ainda é ~5x menor que o nativo); e os dois casos restantes (baixo
+contraste/ruído, não resolução) não mudaram nada — confirmando que tinham uma causa raiz
+diferente. Um resultado nuançado, não um "funcionou tudo", mas que confirma a direção do
+diagnóstico com uma correção real e medida.

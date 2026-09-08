@@ -46,7 +46,9 @@ def compute_dataset_class_weights(dataset, border_size=2):
 
 
 def train_instance_head(data_dir=os.path.join("data", "stage1_train"), num_epochs=5, batch_size=16,
-                         image_size=(128, 128), border_size=2):
+                         image_size=(128, 128), border_size=2,
+                         checkpoint_path=r"resultados/modelos/best_instance_head_model.pth"):
+
     print("=== Iniciando o Treinamento da Trilha A (fronteiras + watershed) - Parte 2 ===")
     start_time = time.time()
 
@@ -72,7 +74,6 @@ def train_instance_head(data_dir=os.path.join("data", "stage1_train"), num_epoch
     optimizer = torch.optim.AdamW(model.parameters(), lr=1e-3, weight_decay=1e-4)
 
     best_val_object_iou = 0.0
-    checkpoint_path = r"resultados/modelos/best_instance_head_model.pth"
     history = {"train_loss": [], "val_loss": [], "val_iou_fundo": [], "val_iou_interior": [], "val_iou_fronteira": []}
 
     for epoch in range(1, num_epochs + 1):

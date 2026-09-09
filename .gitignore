@@ -4,3 +4,4 @@ DL_20242_07_SemanticSegmentation-1.pdf
 __pycache__/
 
 *.pth
+.venv/

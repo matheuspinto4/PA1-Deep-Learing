@@ -328,5 +328,41 @@ seja, a correção acertou a *direção* do diagnóstico mas não a *magnitude* 
 esses casos extremos (provavelmente precisariam de resolução ainda mais próxima da nativa,
 ou de um processamento em tiles menores só para os aglomerados mais densos — conectando de
 volta com a Parte 4). Nos casos 2 e 3 (baixo contraste/ruído), a correção não mudou nada,
-como esperado — confirmando que esses dois casos têm uma causa raiz diferente (ruído, não
-resolução), e que aumentar resolução não é uma correção universal para todo tipo de falha.
+resolução não é uma correção universal para todo tipo de falha.
+
+## Parte 6 — Teste de estresse (corrupções de imagem)
+
+Avaliação de robustez da Trilha A (modelo final de 3 classes + watershed) sob corrupções sintéticas aplicadas na imagem de entrada durante a inferência. Foram testados **3 tipos de corrupção** em **3 níveis de intensidade** (*leve*, *moderada*, *forte*):
+
+1. **Blur (desfoque gaussiano)**: simula desfoque de lente ($\sigma \in \{1.0, 2.5, 5.0\}$).
+2. **Ruído gaussiano aditivo**: simula ruído de sensor térmico/óptico ($\text{std} \in \{0.05, 0.15, 0.30\}$).
+3. **Brilho/Contraste**: simula variação de iluminação do espécime ($\text{fator de contraste} \in \{0.8, 0.6, 0.35\}$, $\text{deslocamento de brilho} \in \{-0.05, -0.12, -0.20\}$).
+
+```bash
+python stress_test.py
+```
+
+Roda a avaliação em todas as 134 imagens de validação para cada configuração, salva os resultados numéricos em `resultados/stress_test_resultados.csv` e gera a figura `resultados/imagens/stress_test_corruptions.png`.
+
+### Resultados
+
+| Corrupção | Nível | Parâmetro | mAP @ [0.50:0.95] | Erro de contagem médio |
+|---|---|---|---|---|
+| Baseline | 0 | Sem corrupção | 0.2862 | 12.13 |
+| Blur | 1 (leve) | $\sigma=1.0$ | 0.1758 | 15.21 |
+| Blur | 2 (moderada) | $\sigma=2.5$ | 0.0907 | 23.19 |
+| Blur | 3 (forte) | $\sigma=5.0$ | 0.0283 | 40.67 |
+| Ruído gaussiano | 1 (leve) | $\text{std}=0.05$ | 0.0768 | 156.73 |
+| Ruído gaussiano | 2 (moderada) | $\text{std}=0.15$ | 0.0297 | 192.28 |
+| Ruído gaussiano | 3 (forte) | $\text{std}=0.30$ | 0.0099 | 123.30 |
+| Brilho/contraste | 1 (leve) | $\text{contraste}=0.8, \text{brilho}=-0.05$ | 0.3039 | 12.68 |
+| Brilho/contraste | 2 (moderada) | $\text{contraste}=0.6, \text{brilho}=-0.12$ | 0.3048 | 13.43 |
+| Brilho/contraste | 3 (forte) | $\text{contraste}=0.35, \text{brilho}=-0.20$ | 0.2546 | 14.80 |
+
+Ver a curva de degradação em `resultados/imagens/stress_test_corruptions.png`.
+
+### Análise
+
+- **Ruído gaussiano (vulnerabilidade crítica)**: Foi a corrupção mais destrutiva para o pipeline de watershed. O ruído aditivo no fundo gera pequenas flutuações de alta frequência que o canal de interior interpreta como dezenas de "nascentes" falsas de marcadores. Como resultado, o erro de contagem dispara para mais de 150 células a mais por imagem (super-segmentação maciça), colapsando o mAP para 0.0768 no nível leve.
+- **Blur (degradação suave)**: O desfoque reduz o mAP de forma contínua conforme $\sigma$ aumenta. Como a classe fronteira entre dois núcleos vizinhos tem apenas 1 a 2 pixels de espessura, a suavização gaussiana mistura a resposta de fronteira com o interior, fundindo marcadores e fazendo o erro de contagem subir por sub-segmentação.
+- **Brilho e contraste (alta robustez)**: O modelo manteve o mAP praticamente inalterado ($\sim 0.25 - 0.30$), demonstrando que a U-Net e a normalização de entrada são altamente invariantes a escurecimento ou queda de contraste uniforme.

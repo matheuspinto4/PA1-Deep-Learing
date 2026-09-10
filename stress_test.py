@@ -160,6 +160,7 @@ def plot_degradation_curves(results, baseline_mAP, save_path=r"resultados/imagen
     ax.grid(True)
 
     plt.tight_layout()
+    os.makedirs(os.path.dirname(save_path), exist_ok=True)
     plt.savefig(save_path)
     print(f"Grafico de degradacao salvo em: '{save_path}'")
 

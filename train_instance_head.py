@@ -135,6 +135,7 @@ def train_instance_head(data_dir=os.path.join("data", "stage1_train"), num_epoch
 
         if epoch_val_object_iou > best_val_object_iou:
             best_val_object_iou = epoch_val_object_iou
+            os.makedirs(os.path.dirname(checkpoint_path), exist_ok=True)
             torch.save(model.state_dict(), checkpoint_path)
 
     elapsed_time = time.time() - start_time
@@ -166,6 +167,7 @@ def plot_training_curves(history, save_path=r"resultados/imagens/instance_head_t
     ax2.grid(True)
 
     plt.tight_layout()
+    os.makedirs(os.path.dirname(save_path), exist_ok=True)
     plt.savefig(save_path)
     print(f"Grafico de treinamento salvo em: '{save_path}'")
 
